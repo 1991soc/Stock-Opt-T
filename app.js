@@ -1,5 +1,5 @@
-// APP.JS BUILD: v5.38 ("Sample Excel for Data Entry" + "Import Excel" round-trip, on both tables)
-console.log("app.js loaded — build v5.38 (\"Sample Excel for Data Entry\" + \"Import Excel\" round-trip, on both tables)");
+// APP.JS BUILD: v5.32 (PP-to-PP list import, collapsible Portfolio/Past Purchases sections, "Portfolio/Past Purchases viewing:" labels, colored Word/PDF exports, Quick Paste Update, Consensus Target Price rename)
+console.log("app.js loaded — build v5.32 (PP-to-PP list import, collapsible Portfolio/Past Purchases sections, \"Portfolio/Past Purchases viewing:\" labels, colored Word/PDF exports, Quick Paste Update, Consensus Target Price rename)");
 
 // --- Supabase auth (mandatory gate) + cross-device sync ---
 // Design note: localStorage stays the fast synchronous source of truth the
@@ -7,8 +7,8 @@ console.log("app.js loaded — build v5.38 (\"Sample Excel for Data Entry\" + \"
 // to a single Supabase row per user: pulling on login (overwrites local with
 // cloud), and pushing periodically + on demand while logged in. The whole app
 // is hidden behind #authOverlay until a session is confirmed.
-const SUPABASE_URL = "https://rzvfeeatzksvgxucbzbo.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_qyTSD1QtcPLdF7UtQBtmNw_3Gw3P3nG";
+const SUPABASE_URL = "https://okbgjjnfxkbbryfgpyap.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_cfTIXfQwai1dHSRJmzoqJg_nLHE4UhR";
 // The pastPurchasesTickers/Values/DateAdded keys are the OLD (pre-duplicates)
 // Past Purchases schema — no longer read or written directly, but kept in the
 // sync list as a safety net so a device pulling an older cloud snapshot can
@@ -71,29 +71,6 @@ function toggleCollapsibleSection(sectionId, toggleBtnId){
 function applyAllCollapsedSections(){
   applyCollapsedSection("portfolioSectionBody", "portfolioToggleBtn");
   applyCollapsedSection("pastPurchasesSectionBody", "pastPurchasesToggleBtn");
-}
-
-// --- Past Purchases "Current Holdings" view filter ---
-// Per-device UI preference (deliberately NOT in SYNC_KEYS, same reasoning as
-// uiViewMode/collapsedSections above). When on, only rows that haven't been sold
-// yet (Selling Price = 0, or there's no Selling Price column at all, in which case
-// nothing counts as sold) are shown in the table body and included in exports —
-// this is purely a display filter, so the footer totals (Total Current Book Value,
-// Total Sale Profit to date, monthly breakdowns) keep summarizing the WHOLE list
-// regardless, the same way they already don't change based on sort order.
-function getPpShowCurrentHoldingsOnly(){
-  try{ return localStorage.getItem("ppShowCurrentHoldingsOnly") === "true"; }
-  catch(e){ return false; }
-}
-function setPpShowCurrentHoldingsOnly(on){
-  try{ localStorage.setItem("ppShowCurrentHoldingsOnly", on ? "true" : "false"); }
-  catch(e){ /* localStorage unavailable */ }
-}
-function isPastPurchaseRowCurrentHolding(row, params){
-  const sellParam = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === "selling price");
-  if(!sellParam) return true; // no Selling Price column at all -> nothing counts as sold
-  const sellVal = Number(row.values && row.values[sellParam.id]) || 0;
-  return sellVal === 0;
 }
 
 let authClient;
@@ -176,20 +153,6 @@ async function openDashboard(user){
   // pastPurchasesRows isn't in that old snapshot, applyRemoteSnapshot() will have
   // just cleared it locally — re-run the migration now so nothing is lost.
   migratePastPurchasesRowsIfNeeded();
-
-  // Same reasoning applies to the "Buy Price" -> "To Buy Price" rename: the
-  // top-level call at script-load time (see renameBuyPriceParamsIfNeeded's
-  // definition) runs against whatever was in localStorage BEFORE this cloud pull
-  // just overwrote it above — so on every login, an un-renamed "Buy Price" saved
-  // to the cloud from an older session would silently reappear, undoing the
-  // rename every time. Re-running it here, against the just-pulled data, is what
-  // actually makes it stick. And since this can genuinely change data (unlike a
-  // passive migration), push the fix back up right away — otherwise it would only
-  // reach the cloud on the next 8-second auto-sync tick, or not at all if the tab
-  // closes before then, letting it "un-rename" itself again on the next pull.
-  if(renameBuyPriceParamsIfNeeded()){
-    pushSnapshotToCloud();
-  }
 
   // Render the whole app now that we have (possibly cloud-restored) data.
   renderListSelector();
@@ -339,11 +302,6 @@ let lastFetchTime = null;
 // recomputing anything themselves.
 let lastMainTableProcessedAssets = [];
 let lastPastPurchasesOrderedRows = [];
-// Same idea, but narrowed to whichever rows are actually visible in the table body
-// right now (i.e. after the "Current Holdings" filter, if it's on) — this is what
-// exports use for their row data, while lastPastPurchasesOrderedRows above (the
-// FULL list) is what footer totals are always computed from.
-let lastPastPurchasesVisibleRows = [];
 
 function getSavedApiKey(){
   try{ return localStorage.getItem("finnhubApiKey") || ""; }
@@ -522,45 +480,13 @@ async function fetchLiveDataForAllAssets(){
 
 // --- Quick Paste Update ---
 // A network-free companion to "Fetch live data": generates a fixed-order prompt
-// listing every ticker across ALL Portfolio Lists (deduplicated) for a fixed set of
-// 7 fields, that the user can hand to any AI assistant, then pastes the AI's numeric
-// reply back in to apply it. Applied via setGlobalOverride (ticker-keyed, not
-// list-keyed) — exactly like a manual cell edit or a "Fetch live data" result — so a
-// paste updates a ticker's values everywhere that ticker appears, across every
-// Portfolio List at once, and takes the same "manual override beats live fetch beats
-// static default" precedence used everywhere else in the app.
-//
-// The 7 fields are a deliberate mix: 4 are always-present BUILTIN_COLUMNS fields
-// (targetPrice, pegRatio, freeCashFlow, currentPrice), and 3 (Dividend Yield,
-// Market Cap, Forward P/E) are normally-optional custom params that the user would
-// otherwise have to add by hand via "+ Parameter" first — resolveQpuFieldId adds
-// them automatically (matching the exact PARAM_PRESETS definition "Fetch live data"
-// already knows how to fill, including its finnhubField mapping) the first time
-// "Parse & Update" actually runs, so the feature works without that manual step.
-const QPU_FIELDS = [
-  { label: "Consensus Target Price", builtinId: "targetPrice" },
-  { label: "PEG Ratio", builtinId: "pegRatio" },
-  { label: "FCF ($M)", builtinId: "freeCashFlow" },
-  { label: "Dividend Yield (%)" },
-  { label: "Market Cap ($B)" },
-  { label: "Current Price", builtinId: "currentPrice" },
-  { label: "Forward P/E" },
-];
-
-// Resolves the override-able field id for one QPU_FIELDS entry: the fixed
-// BUILTIN_COLUMNS id for the 4 always-present fields, or an existing/newly-added
-// custom param's id for the 3 optional ones. findSimilarExistingParam is the same
-// fuzzy matcher the "+ Parameter" UI itself uses, so a column already added by hand
-// under a slightly different label (e.g. "Fwd P/E") is recognized and reused
-// instead of creating a duplicate column.
-function resolveQpuFieldId(field){
-  if(field.builtinId) return field.builtinId;
-  const existing = findSimilarExistingParam(field.label);
-  if(existing) return existing.id;
-  const preset = PARAM_PRESETS.find(p => p.label === field.label);
-  return preset ? addCustomParam(preset) : null;
-}
-
+// listing every ticker across ALL Portfolio Lists (deduplicated) for Current Price,
+// P/E, and ROA — the same trio "Fetch live data" pulls from Finnhub — that the user
+// can hand to any AI assistant, then pastes the AI's numeric reply back in to apply
+// it. Applied via setGlobalOverride (ticker-keyed, not list-keyed) — exactly like a
+// manual cell edit — so a paste updates a ticker's values everywhere that ticker
+// appears, across every Portfolio List at once, and takes the same "manual override
+// beats live fetch beats static default" precedence used everywhere else in the app.
 function getQuickPasteTickers(){
   const seen = new Set();
   const tickers = [];
@@ -579,9 +505,8 @@ function buildQuickPasteUpdatePrompt(tickers){
   if(tickers.length === 0){
     return "No tickers yet — add at least one asset to a Portfolio List first.";
   }
-  const fieldLabels = QPU_FIELDS.map(f => f.label).join(", ");
-  const lines = tickers.map(t => `${t}: ${fieldLabels}`);
-  return `Generate the latest values, in numbers only, in the following order, separated by commas — ${QPU_FIELDS.length} numbers per ticker (${fieldLabels}), no ticker symbols, no labels, no extra text:\n\n${lines.join("\n")}\n\nReply with only the numbers, comma-separated, in that exact order (${tickers.length * QPU_FIELDS.length} numbers total).`;
+  const lines = tickers.map(t => `${t}: Current Price, P/E, ROA (%)`);
+  return `Generate the latest values, in numbers only, in the following order, separated by commas — three numbers per ticker (Current Price, P/E, ROA %), no ticker symbols, no labels, no extra text:\n\n${lines.join("\n")}\n\nReply with only the numbers, comma-separated, in that exact order (${tickers.length * 3} numbers total).`;
 }
 
 function renderQuickPasteUpdatePrompt(){
@@ -632,10 +557,9 @@ function wireUpQuickPasteUpdate(){
       return;
     }
     const tokens = raw.split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
-    const fieldCount = QPU_FIELDS.length;
-    const expected = tickers.length * fieldCount;
+    const expected = tickers.length * 3;
     if(tokens.length !== expected){
-      parseStatus.textContent = `Expected ${expected} numbers (${tickers.length} ticker(s) × ${fieldCount} fields) but found ${tokens.length}. Nothing was updated — check the paste matches the prompt's order and try again.`;
+      parseStatus.textContent = `Expected ${expected} numbers (${tickers.length} ticker(s) × 3 fields) but found ${tokens.length}. Nothing was updated — check the paste matches the prompt's order and try again.`;
       parseStatus.style.color = "#ef4444";
       return;
     }
@@ -647,15 +571,11 @@ function wireUpQuickPasteUpdate(){
       return;
     }
 
-    // Resolve (creating any missing optional custom param) once, up front, so every
-    // ticker below applies against the same field ids.
-    const fieldIds = QPU_FIELDS.map(resolveQpuFieldId);
-
     tickers.forEach((ticker, i) => {
-      const values = numbers.slice(i * fieldCount, i * fieldCount + fieldCount);
-      fieldIds.forEach((fieldId, j) => {
-        if(fieldId) setGlobalOverride(ticker, fieldId, values[j]);
-      });
+      const [currentPrice, pe, roa] = numbers.slice(i * 3, i * 3 + 3);
+      setGlobalOverride(ticker, "currentPrice", currentPrice);
+      setGlobalOverride(ticker, "pe", pe);
+      setGlobalOverride(ticker, "roa", roa);
     });
 
     runMatrixOptimization();
@@ -667,11 +587,9 @@ function wireUpQuickPasteUpdate(){
       if(typeof renderPastPurchasesTable === "function") renderPastPurchasesTable();
       if(typeof renderPastPurchasesParamList === "function") renderPastPurchasesParamList();
     }
-    if(typeof renderColumnOrderList === "function") renderColumnOrderList();
-    if(typeof renderCustomParamList === "function") renderCustomParamList();
 
     pasteInput.value = "";
-    parseStatus.textContent = `Updated ${QPU_FIELDS.map(f => f.label).join(", ")} for ${tickers.length} ticker(s), applied across every Portfolio List they appear on.`;
+    parseStatus.textContent = `Updated Current Price, P/E, and ROA for ${tickers.length} ticker(s), applied across every Portfolio List they appear on.`;
     parseStatus.style.color = "var(--emerald)";
   });
 }
@@ -714,7 +632,6 @@ const PARAM_PRESETS = [
   { label: "Actual Upside (%)", type: "number", defaultValue: 0, computed: true, formula: "actualUpsidePct" },
   { label: "Units Purchased", type: "number", defaultValue: 0 },
   { label: "Average Purchase Price ($)", type: "number", defaultValue: 0 },
-  { label: "To Buy Price", type: "number", defaultValue: 0 },
   { label: "Date Purchased", type: "date", defaultValue: "__today__" },
   { label: "Dividend Yield (%)", type: "number", defaultValue: 0, finnhubField: ["dividendYieldIndicatedAnnual", "currentDividendYieldTTM"] },
   { label: "Dividend Payout Ratio (%)", type: "number", defaultValue: 0 },
@@ -1581,53 +1498,6 @@ function migratePastPurchasesRowsIfNeeded(){
 }
 migratePastPurchasesRowsIfNeeded();
 
-// One-time, self-healing rename: a user could freely type "Buy Price" as a custom
-// parameter's name (it was never a preset/glossary entry — just whatever label
-// someone typed into "Add Parameter"). Renaming it here, by label, wherever a
-// param with that exact name is stored, keeps it linked to the same param id
-// (and every value already entered under it) while updating just the display
-// text to "To Buy Price". Runs on every load — harmless once already renamed,
-// since "buy price" no longer matches anything afterward — and covers BOTH the
-// Portfolio Lists table's custom params and the Past Purchases table's params
-// (they're stored separately; a user could have added it to either).
-// Returns true if it actually renamed anything, so callers (see openDashboard,
-// below) know whether the fix needs pushing back up to the cloud.
-function renameBuyPriceParamsIfNeeded(){
-  const isBuyPrice = label => String(label).trim().toLowerCase() === "buy price";
-  let anyChanged = false;
-  try{
-    const mainParams = getCustomParams();
-    let changed = false;
-    mainParams.forEach(p => { if(isBuyPrice(p.label)){ p.label = "To Buy Price"; changed = true; } });
-    if(changed){ saveCustomParams(mainParams); anyChanged = true; }
-  }catch(e){ /* localStorage unavailable */ }
-  try{
-    const ppParams = getPastPurchasesParams();
-    let changed = false;
-    ppParams.forEach(p => { if(isBuyPrice(p.label)){ p.label = "To Buy Price"; changed = true; } });
-    if(changed){ savePastPurchasesParams(ppParams); anyChanged = true; }
-  }catch(e){ /* localStorage unavailable */ }
-  return anyChanged;
-}
-renameBuyPriceParamsIfNeeded();
-
-// Shared by both tables: is `currentPrice` at or below the "To Buy Price" target
-// (a user-added custom column, on either table), signaling "this hit my buy
-// target"? `params` is that table's own param/column list, `valuesById` the
-// row's (or ticker's) resolved custom values keyed by param id. Matches both the
-// current "To Buy Price" label and the pre-rename "Buy Price" spelling, purely
-// as a defensive fallback — renameBuyPriceParamsIfNeeded() above normally means
-// only the new spelling is ever actually stored. A zero/blank target isn't a
-// real buy-price entry yet, so it never triggers the highlight.
-function isAtOrBelowBuyPriceTarget(currentPrice, params, valuesById){
-  const norm = s => String(s).trim().toLowerCase();
-  const buyPriceParam = (params || []).find(p => !p.computed && (norm(p.label) === "to buy price" || norm(p.label) === "buy price"));
-  if(!buyPriceParam) return false;
-  const buyPriceVal = Number((valuesById || {})[buyPriceParam.id]) || 0;
-  if(buyPriceVal === 0) return false;
-  return Number(currentPrice) <= buyPriceVal;
-}
-
 function addPastPurchaseRow(asset){
   const rows = getPastPurchasesRows();
   const id = "pp_row_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
@@ -2090,9 +1960,7 @@ function getPastPurchasesSortedRows(){
   else if(sortMode === 'date-new') rows.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
   else if(sortMode === 'date-old') rows.sort((a, b) => (a.dateAdded || 0) - (b.dateAdded || 0));
   else if(sortMode === 'param-date-purchased') sortByParamLabel('Date Purchased', 'desc'); // most recent purchase first
-  else if(sortMode === 'param-date-purchased-old') sortByParamLabel('Date Purchased', 'asc'); // oldest purchase first
   else if(sortMode === 'param-date-sale') sortByParamLabel('Date Sale', 'desc'); // most recently sold first
-  else if(sortMode === 'param-date-sale-old') sortByParamLabel('Date Sale', 'asc'); // oldest sale first
   else if(sortMode === 'param-sale-profit') sortByParamLabel('Sale Profit', 'desc'); // highest profit first
   else if(sortMode === 'param-missed-gain') sortByParamLabel('Missed Gain %', 'desc'); // biggest missed gain first
   // 'custom' (or anything else): leave as the persisted order.
@@ -2118,17 +1986,7 @@ function renderPastPurchasesTable(){
   const orderedRows = getPastPurchasesSortedRows();
   lastPastPurchasesOrderedRows = orderedRows;
 
-  // "Current Holdings" is a display filter only — it narrows which rows appear in
-  // the table body (and, mirroring that, in exports), but the footer totals below
-  // always summarize every row in the list, same as they already do regardless of
-  // sort order.
-  const showHoldingsOnly = getPpShowCurrentHoldingsOnly();
-  const visibleRows = showHoldingsOnly ? orderedRows.filter(r => isPastPurchaseRowCurrentHolding(r, params)) : orderedRows;
-  lastPastPurchasesVisibleRows = visibleRows;
-  const holdingsBtn = document.getElementById("ppCurrentHoldingsToggle");
-  if(holdingsBtn) holdingsBtn.classList.toggle("active-tab", showHoldingsOnly);
-
-  let headHtml = '<tr><th>Ticker</th>';
+  let headHtml = '<tr><th>Past Purchases</th>';
   params.forEach((p, idx) => {
     const isSorted = ppColumnSortState && ppColumnSortState.colId === p.id;
     const sortIcon = isSorted ? (ppColumnSortState.direction === 'asc' ? '▲' : '▼') : '⇅';
@@ -2176,32 +2034,26 @@ function renderPastPurchasesTable(){
   });
 
   tbody.innerHTML = "";
-  if(visibleRows.length === 0 || params.length === 0){
+  if(orderedRows.length === 0 || params.length === 0){
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = params.length + 1;
     td.style.color = "var(--text-secondary)";
     td.style.padding = "1.25rem 1rem";
-    td.textContent = params.length === 0
-      ? "Add at least one parameter above to start tracking data for these assets."
-      : (showHoldingsOnly
-        ? (orderedRows.length === 0 ? "No assets yet — add one above, or import a list." : "No current holdings — every asset on this list has a non-zero Selling Price, or turn off \"Current Holdings\" to see everything.")
-        : "No assets yet — add one above, or import a list.");
+    td.textContent = orderedRows.length === 0
+      ? "No assets yet — add one above, or import a list."
+      : "Add at least one parameter above to start tracking data for these assets.";
     tr.appendChild(td);
     tbody.appendChild(tr);
-    // The footer (Total Current Book Value, Total Sale Profit to date, etc.) still
-    // reflects the FULL list even when the filtered body is empty, so only skip it
-    // when there's genuinely nothing on the list at all.
-    if(tfoot && orderedRows.length === 0) tfoot.innerHTML = "";
-    else if(tfoot) renderPastPurchasesFooter(tfoot, params, orderedRows);
+    if(tfoot) tfoot.innerHTML = "";
     return;
   }
 
-  visibleRows.forEach((row, rowIdx) => {
+  orderedRows.forEach((row, rowIdx) => {
     const tr = document.createElement('tr');
     const resolved = resolvePastPurchaseRowValues(row);
     const upDisabled = rowIdx === 0 ? 'disabled' : '';
-    const downDisabled = rowIdx === visibleRows.length - 1 ? 'disabled' : '';
+    const downDisabled = rowIdx === orderedRows.length - 1 ? 'disabled' : '';
     let rowHtml = `<td>
       <input class="cell-input cell-input-ticker pp-asset-input" data-row-id="${row.id}" data-resolved-value="${escHtml(row.asset)}" type="text" value="${escHtml(row.asset)}">
       <div class="row-ctrl-controls">
@@ -2248,14 +2100,7 @@ function renderPastPurchasesTable(){
         } else if(p.type === 'date'){
           rowHtml += `<td><input class="cell-input pp-cell-input" data-row-id="${row.id}" data-field="${p.id}" data-type="date" type="date" value="${escAttr(val)}"></td>`;
         } else {
-          // Same "hit your buy target" emerald highlight as the main table's
-          // Current Price column, applied here whenever this row has BOTH a
-          // "Current Price" column (e.g. pulled in from Portfolio Lists) and a
-          // "To Buy Price" column of its own.
-          const isCurrentPriceCol = String(p.label).trim().toLowerCase() === "current price";
-          const isAtTarget = isCurrentPriceCol && isAtOrBelowBuyPriceTarget(val, params, resolved);
-          const styleAttr = isAtTarget ? ' style="color:var(--emerald);"' : '';
-          rowHtml += `<td><input class="cell-input cell-input-num pp-cell-input" data-row-id="${row.id}" data-field="${p.id}" data-type="number" type="number" step="0.01" value="${val}"${styleAttr}></td>`;
+          rowHtml += `<td><input class="cell-input cell-input-num pp-cell-input" data-row-id="${row.id}" data-field="${p.id}" data-type="number" type="number" step="0.01" value="${val}"></td>`;
         }
       }
     });
@@ -2327,88 +2172,81 @@ function renderPastPurchasesTable(){
     });
   });
 
-  if(tfoot) renderPastPurchasesFooter(tfoot, params, orderedRows);
-}
+  if(tfoot){
+    const saleProfitParam = params.find(p => p.computed && p.formula === 'salesProfitPP');
+    const dateSaleParam = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === 'date sale');
+    const bookValueParam = params.find(p => p.computed && p.formula === 'bookValuePP');
+    const sellParamForBookValue = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === 'selling price');
+    let footHtml = '';
 
-// Builds the Past Purchases tfoot summary rows — Total Current Book Value, then
-// Total Sale Profit to date immediately below it, then the per-month Sales Profit
-// breakdown (most recent month first) below both. Always summarizes the FULL list
-// passed in (orderedRows), independent of the "Current Holdings" display filter or
-// whatever sort order the table body itself is currently showing.
-function renderPastPurchasesFooter(tfoot, params, orderedRows){
-  const saleProfitParam = params.find(p => p.computed && p.formula === 'salesProfitPP');
-  const dateSaleParam = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === 'date sale');
-  const bookValueParam = params.find(p => p.computed && p.formula === 'bookValuePP');
-  const sellParamForBookValue = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === 'selling price');
-  let footHtml = '';
-
-  // "Not yet sold" = Selling Price is 0 (or there's no Selling Price column at all,
-  // in which case nothing on this list counts as sold).
-  if(bookValueParam){
-    const colIndex = params.findIndex(p => p.id === bookValueParam.id);
-    const totalBookValue = orderedRows.reduce((sum, row) => {
-      const sellVal = sellParamForBookValue ? (Number(row.values && row.values[sellParamForBookValue.id]) || 0) : 0;
-      if(sellVal !== 0) return sum; // already sold — excluded from "current" book value
-      return sum + (resolvePastPurchaseRowValues(row)[bookValueParam.id] || 0);
-    }, 0);
-    footHtml += `<tr style="background:rgba(255,255,255,0.02);"><td style="font-weight:600; color:var(--text-secondary);">Total Current Book Value</td>`;
-    params.forEach((p, idx) => {
-      footHtml += idx === colIndex
-        ? `<td style="font-weight:600; color:var(--accent-blue);">$${totalBookValue.toFixed(2)}</td>`
-        : `<td></td>`;
-    });
-    footHtml += `</tr>`;
-  }
-
-  // Grand total, positioned immediately below Total Current Book Value — the
-  // per-month breakdown (further below) is supporting detail for this number.
-  if(saleProfitParam){
-    const total = orderedRows.reduce((sum, row) => sum + (resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0), 0);
-    const sign = total >= 0 ? '+' : '-';
-    const color = total >= 0 ? 'var(--emerald)' : '#ef4444';
-    const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
-    footHtml += `<tr style="background:rgba(255,255,255,0.03); border-top:2px solid var(--border-color);"><td style="font-weight:700; color:#fff;">Total Sale Profit to date</td>`;
-    params.forEach((p, idx) => {
-      footHtml += idx === colIndex
-        ? `<td style="font-weight:700; color:${color};">${sign}$${Math.abs(total).toFixed(2)}</td>`
-        : `<td></td>`;
-    });
-    footHtml += `</tr>`;
-  }
-
-  if(saleProfitParam && dateSaleParam){
-    // Group rows that actually have a Date Sale entered into per-month subtotals,
-    // most recent month first.
-    const groups = {};
-    orderedRows.forEach(row => {
-      const dateVal = (row.values && row.values[dateSaleParam.id]) || '';
-      const parsed = ppParseDateSale(dateVal);
-      if(!parsed) return;
-      const key = parsed.year + '-' + String(parsed.month).padStart(2, '0');
-      if(!groups[key]) groups[key] = { year: parsed.year, month: parsed.month, total: 0 };
-      groups[key].total += resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0;
-    });
-    const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
-    const groupKeys = Object.keys(groups).sort((a, b) => {
-      if(groups[b].year !== groups[a].year) return groups[b].year - groups[a].year;
-      return groups[b].month - groups[a].month;
-    });
-    groupKeys.forEach(key => {
-      const g = groups[key];
-      const sign = g.total >= 0 ? '+' : '-';
-      const color = g.total >= 0 ? 'var(--emerald)' : '#ef4444';
-      const label = `Sales Profit for month of ${PP_MONTH_ABBR[g.month - 1]} of ${g.year}`;
-      footHtml += `<tr style="background:rgba(255,255,255,0.02);"><td style="font-weight:600; color:var(--text-secondary);">${label}</td>`;
+    // "Not yet sold" = Selling Price is 0 (or there's no Selling Price column at all,
+    // in which case nothing on this list counts as sold). Shown above the monthly
+    // sale-profit subtotals, since it describes what's still held rather than what's
+    // already been sold.
+    if(bookValueParam){
+      const colIndex = params.findIndex(p => p.id === bookValueParam.id);
+      const totalBookValue = orderedRows.reduce((sum, row) => {
+        const sellVal = sellParamForBookValue ? (Number(row.values && row.values[sellParamForBookValue.id]) || 0) : 0;
+        if(sellVal !== 0) return sum; // already sold — excluded from "current" book value
+        return sum + (resolvePastPurchaseRowValues(row)[bookValueParam.id] || 0);
+      }, 0);
+      footHtml += `<tr style="background:rgba(255,255,255,0.02);"><td style="font-weight:600; color:var(--text-secondary);">Total Current Book Value</td>`;
       params.forEach((p, idx) => {
         footHtml += idx === colIndex
-          ? `<td style="font-weight:600; color:${color};">${sign}$${Math.abs(g.total).toFixed(2)}</td>`
+          ? `<td style="font-weight:600; color:var(--accent-blue);">$${totalBookValue.toFixed(2)}</td>`
           : `<td></td>`;
       });
       footHtml += `</tr>`;
-    });
-  }
+    }
 
-  tfoot.innerHTML = footHtml;
+    if(saleProfitParam && dateSaleParam){
+      // Group rows that actually have a Date Sale entered into per-month subtotals,
+      // most recent month first, inserted above the grand total below.
+      const groups = {};
+      orderedRows.forEach(row => {
+        const dateVal = (row.values && row.values[dateSaleParam.id]) || '';
+        const parsed = ppParseDateSale(dateVal);
+        if(!parsed) return;
+        const key = parsed.year + '-' + String(parsed.month).padStart(2, '0');
+        if(!groups[key]) groups[key] = { year: parsed.year, month: parsed.month, total: 0 };
+        groups[key].total += resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0;
+      });
+      const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
+      const groupKeys = Object.keys(groups).sort((a, b) => {
+        if(groups[b].year !== groups[a].year) return groups[b].year - groups[a].year;
+        return groups[b].month - groups[a].month;
+      });
+      groupKeys.forEach(key => {
+        const g = groups[key];
+        const sign = g.total >= 0 ? '+' : '-';
+        const color = g.total >= 0 ? 'var(--emerald)' : '#ef4444';
+        const label = `Sales Profit for month of ${PP_MONTH_ABBR[g.month - 1]} of ${g.year}`;
+        footHtml += `<tr style="background:rgba(255,255,255,0.02);"><td style="font-weight:600; color:var(--text-secondary);">${label}</td>`;
+        params.forEach((p, idx) => {
+          footHtml += idx === colIndex
+            ? `<td style="font-weight:600; color:${color};">${sign}$${Math.abs(g.total).toFixed(2)}</td>`
+            : `<td></td>`;
+        });
+        footHtml += `</tr>`;
+      });
+    }
+
+    if(saleProfitParam){
+      const total = orderedRows.reduce((sum, row) => sum + (resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0), 0);
+      const sign = total >= 0 ? '+' : '-';
+      const color = total >= 0 ? 'var(--emerald)' : '#ef4444';
+      const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
+      footHtml += `<tr style="background:rgba(255,255,255,0.03); border-top:2px solid var(--border-color);"><td style="font-weight:700; color:#fff;">Total Sale Profit to date</td>`;
+      params.forEach((p, idx) => {
+        footHtml += idx === colIndex
+          ? `<td style="font-weight:700; color:${color};">${sign}$${Math.abs(total).toFixed(2)}</td>`
+          : `<td></td>`;
+      });
+      footHtml += `</tr>`;
+    }
+
+    tfoot.innerHTML = footHtml;
+  }
 }
 
 // --- Export: Excel / Text / PDF, for both tables ---
@@ -2604,21 +2442,20 @@ function exportTableAsPdf(filename, title, headers, rows, colors){
   doc.write(html);
   doc.close();
 
-  // Call print() synchronously, in the SAME call stack as the click that triggered
-  // this export — no setTimeout/async gap. This table's HTML has no external
-  // resources (no images, fonts, or scripts to fetch), so doc.write()/doc.close()
-  // already leaves it fully parsed and laid out by the time doc.close() returns —
-  // nothing is gained by waiting. A delay here (even a few ms, via setTimeout or an
-  // onload handler) happens in a separate task from the original click, so the
-  // browser no longer treats the print() call as a direct result of the user's
-  // gesture — that's what was causing Chrome's extra "This page is trying to
-  // print — do you want to print this page?" confirmation before the real print
-  // dialog. Calling it immediately keeps it tied to the click and skips that prompt.
-  try{
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
-  }catch(e){
-    alert("Could not open the print dialog for PDF export. Please try again, or use \"Export to Word\" instead.");
+  const triggerPrint = () => {
+    try{
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }catch(e){
+      alert("Could not open the print dialog for PDF export. Please try again, or use \"Export to Word\" instead.");
+    }
+  };
+  // Give the iframe a moment to lay out the table before printing; contentWindow.onload
+  // fires once the doc.write'd content has finished loading in the iframe.
+  if(iframe.contentWindow.document.readyState === "complete"){
+    setTimeout(triggerPrint, 50);
+  } else {
+    iframe.onload = () => setTimeout(triggerPrint, 50);
   }
 }
 
@@ -2653,9 +2490,6 @@ function getMainTableExportValue(item, colDef){
 // palette instead of the live dark-theme hex values.
 function getMainTableExportColor(item, colDef){
   if(colDef.id === "calculatedUpside") return item.calculatedUpside >= 0 ? EXPORT_COLORS.emerald : EXPORT_COLORS.red;
-  if(colDef.id === "currentPrice"){
-    return isAtOrBelowBuyPriceTarget(item.currentPrice, getCustomParams(), item.customValues) ? EXPORT_COLORS.emerald : null;
-  }
   if(colDef.isCustom){
     const val = item.customValues[colDef.id];
     const isDefault = item.customIsDefault && item.customIsDefault[colDef.id];
@@ -2719,9 +2553,6 @@ function getPastPurchasesExportRowColors(resolved, params){
       const sellVal = sellParam ? (Number(resolved[sellParam.id]) || 0) : 0;
       return sellVal === 0 ? EXPORT_COLORS.lightBlue : null;
     }
-    if(!p.computed && String(p.label).trim().toLowerCase() === "current price"){
-      return isAtOrBelowBuyPriceTarget(resolved[p.id], params, resolved) ? EXPORT_COLORS.emerald : null;
-    }
     return null;
   })];
 }
@@ -2730,16 +2561,12 @@ function getPastPurchasesExportRowColors(resolved, params){
 // grand total) so exports carry the same summary rows shown on screen.
 function buildPastPurchasesExportTable(){
   const params = getPastPurchasesParams();
-  // Body rows mirror exactly what's currently visible on screen (respecting the
-  // "Current Holdings" filter, if it's on); footer totals below always summarize
-  // the FULL list, same as the live table's own tfoot.
-  const visibleRows = lastPastPurchasesVisibleRows || lastPastPurchasesOrderedRows || [];
   const orderedRows = lastPastPurchasesOrderedRows || [];
-  const headers = ["Ticker", ...params.map(p => p.label)];
+  const headers = ["Past Purchases", ...params.map(p => p.label)];
 
   const rows = [];
   const colors = [];
-  visibleRows.forEach(row => {
+  orderedRows.forEach(row => {
     const resolved = resolvePastPurchaseRowValues(row);
     const cells = params.map(p => {
       if(p.computed && p.formula === "salesProfitPP"){
@@ -2786,21 +2613,6 @@ function buildPastPurchasesExportTable(){
     colors.push(rowColors);
   }
 
-  // Grand total, positioned immediately below Total Current Book Value — matches
-  // the live table's tfoot order (the per-month breakdown below is supporting
-  // detail for this number).
-  if(saleProfitParam){
-    const total = orderedRows.reduce((sum, row) => sum + (resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0), 0);
-    const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
-    const row = new Array(headers.length).fill("");
-    const rowColors = new Array(headers.length).fill(null);
-    row[0] = "Total Sale Profit to date";
-    row[colIndex + 1] = (total >= 0 ? "+" : "-") + "$" + Math.abs(total).toFixed(2);
-    rowColors[colIndex + 1] = total >= 0 ? EXPORT_COLORS.emerald : EXPORT_COLORS.red;
-    rows.push(row);
-    colors.push(rowColors);
-  }
-
   if(saleProfitParam && dateSaleParam){
     const groups = {};
     orderedRows.forEach(row => {
@@ -2828,46 +2640,19 @@ function buildPastPurchasesExportTable(){
     });
   }
 
+  if(saleProfitParam){
+    const total = orderedRows.reduce((sum, row) => sum + (resolvePastPurchaseRowValues(row)[saleProfitParam.id] || 0), 0);
+    const colIndex = params.findIndex(p => p.id === saleProfitParam.id);
+    const row = new Array(headers.length).fill("");
+    const rowColors = new Array(headers.length).fill(null);
+    row[0] = "Total Sale Profit to date";
+    row[colIndex + 1] = (total >= 0 ? "+" : "-") + "$" + Math.abs(total).toFixed(2);
+    rowColors[colIndex + 1] = total >= 0 ? EXPORT_COLORS.emerald : EXPORT_COLORS.red;
+    rows.push(row);
+    colors.push(rowColors);
+  }
+
   return { headers, rows, colors };
-}
-
-// Excel and Text exports have no way to show real cell color the way Word/PDF do
-// (colored via getMainTableExportColor/getPastPurchasesExportRowColors instead —
-// Excel's export library can't write cell styles, and plain text has no color at
-// all). So for those two formats only, the "hit your buy target" signal is carried
-// as a plain "At Buy Target" Yes/No column appended onto a COPY of the export
-// table instead — Word/PDF are untouched by these and keep just the color, since
-// showing both there would be redundant. Main table export rows are a 1:1 map of
-// lastMainTableProcessedAssets, so no per-row lookup is needed beyond that.
-function withBuyTargetColumnMainTable(headers, rows){
-  const params = getCustomParams();
-  const newHeaders = [...headers, "At Buy Target"];
-  const newRows = rows.map((r, idx) => {
-    const item = lastMainTableProcessedAssets[idx];
-    const hit = item ? isAtOrBelowBuyPriceTarget(item.currentPrice, params, item.customValues) : false;
-    return [...r, hit ? "Yes" : "No"];
-  });
-  return { headers: newHeaders, rows: newRows };
-}
-
-// Same idea for Past Purchases, but its export rows include summary/footer rows
-// AFTER the per-asset ones (Total Current Book Value, Total Sale Profit to date,
-// monthly breakdowns — see buildPastPurchasesExportTable above) — only the first
-// visibleRows.length rows are real assets, so only those get a Yes/No; footer
-// rows get a blank cell, matching how every other non-participating column in
-// those rows is already left blank.
-function withBuyTargetColumnPastPurchases(headers, rows){
-  const params = getPastPurchasesParams();
-  const visibleRows = lastPastPurchasesVisibleRows || lastPastPurchasesOrderedRows || [];
-  const cpParam = params.find(p => !p.computed && String(p.label).trim().toLowerCase() === "current price");
-  const newHeaders = [...headers, "At Buy Target"];
-  const newRows = rows.map((r, idx) => {
-    if(idx >= visibleRows.length || !cpParam) return [...r, ""]; // a footer/summary row, or no Current Price column to check
-    const resolved = resolvePastPurchaseRowValues(visibleRows[idx]);
-    const hit = isAtOrBelowBuyPriceTarget(resolved[cpParam.id], params, resolved);
-    return [...r, hit ? "Yes" : "No"];
-  });
-  return { headers: newHeaders, rows: newRows };
 }
 
 function wireUpPastPurchasesRefreshButton(){
@@ -2892,14 +2677,12 @@ function wireUpExportButtons(){
 
   const excelBtn = document.getElementById("exportExcelBtn");
   if(excelBtn) excelBtn.addEventListener("click", () => {
-    const built = buildMainTableExportTable();
-    const { headers, rows } = withBuyTargetColumnMainTable(built.headers, built.rows);
+    const { headers, rows } = buildMainTableExportTable();
     exportTableAsExcel(`${activeListName()}.xlsx`, getActiveList().name || "Portfolio List", headers, rows);
   });
   const textBtn = document.getElementById("exportTextBtn");
   if(textBtn) textBtn.addEventListener("click", () => {
-    const built = buildMainTableExportTable();
-    const { headers, rows } = withBuyTargetColumnMainTable(built.headers, built.rows);
+    const { headers, rows } = buildMainTableExportTable();
     exportTableAsText(`${activeListName()}.txt`, headers, rows);
   });
   const wordBtn = document.getElementById("exportWordBtn");
@@ -2915,14 +2698,12 @@ function wireUpExportButtons(){
 
   const ppExcelBtn = document.getElementById("ppExportExcelBtn");
   if(ppExcelBtn) ppExcelBtn.addEventListener("click", () => {
-    const built = buildPastPurchasesExportTable();
-    const { headers, rows } = withBuyTargetColumnPastPurchases(built.headers, built.rows);
+    const { headers, rows } = buildPastPurchasesExportTable();
     exportTableAsExcel("Past_Purchases.xlsx", "Past Purchases", headers, rows);
   });
   const ppTextBtn = document.getElementById("ppExportTextBtn");
   if(ppTextBtn) ppTextBtn.addEventListener("click", () => {
-    const built = buildPastPurchasesExportTable();
-    const { headers, rows } = withBuyTargetColumnPastPurchases(built.headers, built.rows);
+    const { headers, rows } = buildPastPurchasesExportTable();
     exportTableAsText("Past_Purchases.txt", headers, rows);
   });
   const ppWordBtn = document.getElementById("ppExportWordBtn");
@@ -2935,338 +2716,6 @@ function wireUpExportButtons(){
     const { headers, rows, colors } = buildPastPurchasesExportTable();
     exportTableAsPdf("Past_Purchases.pdf", "Past Purchases", headers, rows, colors);
   });
-}
-
-// --- "Sample Excel for Data Entry" / "Import Excel" ---
-// A round-trippable companion to the plain Excel export above. The sample file
-// lists every ticker/asset across ALL of a table's lists (not just the one
-// currently open) so research can be done once and spread everywhere that ticker
-// appears, together with every parameter that can actually be typed in — built-in
-// and custom columns, but NOT the read-only computed ones (Implied Upside, Sale
-// Profit, etc.), since there's nothing to "fill in" there and re-importing them
-// would just be ignored anyway. "Import Excel" reads that same shape back —
-// matched by column HEADER text, not position, so re-ordering or deleting columns
-// in the spreadsheet is safe, and any header it doesn't recognize is reported
-// rather than silently dropped — and writes every non-blank cell it finds into
-// the CURRENTLY OPEN list, adding any ticker/asset that isn't in it yet. A blank
-// cell is left alone (never wipes an existing value to 0/""), so a partially
-// filled-in sheet is safe to re-import.
-
-function getEditableMainColumnDefs(){
-  // Same column set the main table itself renders (getAllColumnDefs), minus the
-  // computed-only ones (Implied Upside, Optimized Weight Allocation, and any
-  // computed custom param) — those are always derived, never typed in.
-  return getAllColumnDefs().filter(d => !d.computed);
-}
-function getEditablePastPurchasesParams(){
-  return getPastPurchasesParams().filter(p => !p.computed);
-}
-
-function buildSampleExcelForDataEntry_Portfolio(){
-  const defs = getEditableMainColumnDefs();
-  // Prefer the active list's current column order (for a familiar left-to-right
-  // layout), then append anything editable that order left out (e.g. a hidden
-  // built-in column, or one only used on a different list).
-  const order = getColumnOrder().filter(id => defs.some(d => d.id === id));
-  const orderedDefs = [...order.map(id => defs.find(d => d.id === id)), ...defs.filter(d => !order.includes(d.id))];
-  const headers = ["Ticker", ...orderedDefs.map(d => d.label)];
-  const tickers = getQuickPasteTickers(); // deduped + alphabetical, across every Portfolio List
-  const overrides = getGlobalOverrides();
-  const rows = tickers.map(ticker => {
-    const builtin = getResolvedBuiltinAssetValues(ticker) || {};
-    const ov = overrides[ticker] || {};
-    return [ticker, ...orderedDefs.map(d => {
-      if(d.isCustom) return ov[d.id] !== undefined ? ov[d.id] : "";
-      return builtin[d.id] !== undefined ? builtin[d.id] : "";
-    })];
-  });
-  return { headers, rows };
-}
-
-// Every unique asset symbol across every Past Purchases list (an asset can repeat
-// within/across lists for separate purchase rounds — this dedupes to one row per
-// symbol for data-entry purposes, using whichever row is encountered first for
-// its current values).
-function getAllPastPurchasesAssetRows(){
-  const seen = new Set();
-  const ordered = [];
-  Object.values(getAllPastPurchasesLists()).forEach(list => {
-    (list.rows || []).forEach(row => {
-      if(row.asset && !seen.has(row.asset)){
-        seen.add(row.asset);
-        ordered.push(row);
-      }
-    });
-  });
-  ordered.sort((a, b) => a.asset.localeCompare(b.asset));
-  return ordered;
-}
-
-function buildSampleExcelForDataEntry_PastPurchases(){
-  const params = getEditablePastPurchasesParams();
-  const headers = ["Asset", ...params.map(p => p.label)];
-  const rows = getAllPastPurchasesAssetRows().map(row => {
-    const values = row.values || {};
-    return [row.asset, ...params.map(p => values[p.id] !== undefined ? values[p.id] : "")];
-  });
-  return { headers, rows };
-}
-
-// Converts one imported cell into what setGlobalOverride/setPastPurchaseValue
-// expect for that column's type: numbers stay numbers, dates become "YYYY-MM-DD"
-// strings (matching every date input elsewhere in this app), everything else is a
-// trimmed string. Returns undefined for a genuinely blank cell or an unparseable
-// number, so the caller can skip it (leaving any existing value untouched) rather
-// than overwriting good data with 0/"".
-function parseImportedCellValue(raw, type){
-  if(raw === undefined || raw === null) return undefined;
-  if(typeof raw === "string" && raw.trim() === "") return undefined;
-  if(type === "number"){
-    const n = Number(raw);
-    return isFinite(n) ? n : undefined;
-  }
-  if(type === "date"){
-    // Formats using LOCAL date components (never toISOString, which converts to
-    // UTC first and can shift the calendar day backward/forward across midnight
-    // depending on the browser's timezone) so a purchase date typed as "Jan 15"
-    // always comes back as "Jan 15", not "Jan 14".
-    const toLocalYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if(raw instanceof Date && !isNaN(raw)) return toLocalYmd(raw);
-    const s = String(raw).trim();
-    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const parsed = new Date(s);
-    return isNaN(parsed) ? s : toLocalYmd(parsed);
-  }
-  return String(raw).trim();
-}
-
-// Reads the first sheet of an uploaded .xlsx/.xls File as an array-of-arrays
-// (header row first), loading the same SheetJS library (with the same multi-CDN
-// retry) the Excel EXPORT already depends on, since parsing needs the same
-// XLSX global.
-async function readWorkbookFirstSheetRows(file){
-  const ok = await ensureLibraryLoaded(() => typeof XLSX !== "undefined", EXPORT_LIB_URLS.xlsx);
-  if(!ok){
-    throw new Error('Excel import needs its helper library, and it could not be loaded from any available source just now. Please check your internet connection (or any ad-blocker/firewall that might be blocking cdn.jsdelivr.net, cdnjs.cloudflare.com, or unpkg.com) and try again.');
-  }
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
-  const sheetName = wb.SheetNames[0];
-  if(!sheetName) return [];
-  return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: "" });
-}
-
-// Applies an imported array-of-arrays into the CURRENTLY OPEN Portfolio List.
-// Column 0 is always "Ticker"; every other header is matched (via the same
-// normalizeParamLabel used for the "+/- Parameter" duplicate-column guard, so
-// aliasing like "FCF ($M)"/"Free Cash Flow" still lines up) against this table's
-// editable columns. A ticker not yet in the open list is added to it first.
-function importExcelIntoActivePortfolioList(rowsAoA){
-  if(!rowsAoA || rowsAoA.length === 0) return { tickersAdded: 0, tickersUpdated: 0, valuesApplied: 0, unmatchedHeaders: [] };
-  const [headerRow, ...dataRows] = rowsAoA;
-  const editableDefs = getEditableMainColumnDefs();
-  const colMap = [];
-  const unmatchedHeaders = [];
-  headerRow.forEach((h, idx) => {
-    if(idx === 0){ colMap.push(null); return; } // "Ticker" column
-    const norm = normalizeParamLabel(String(h));
-    const match = editableDefs.find(d => normalizeParamLabel(d.label) === norm);
-    colMap.push(match || null);
-    if(!match && String(h).trim() !== "") unmatchedHeaders.push(String(h));
-  });
-
-  const existingTickers = new Set(getWorkingData().map(a => a.ticker));
-  let tickersAdded = 0, tickersUpdated = 0, valuesApplied = 0;
-
-  dataRows.forEach(rowArr => {
-    const ticker = String(rowArr[0] || "").trim().toUpperCase();
-    if(!ticker) return;
-
-    if(existingTickers.has(ticker)){
-      tickersUpdated++;
-    } else {
-      addAsset({ ticker }); // no name passed -> addAsset falls back to any existing override/base name, or the ticker itself
-      existingTickers.add(ticker);
-      tickersAdded++;
-    }
-
-    colMap.forEach((def, idx) => {
-      if(!def) return;
-      let value = parseImportedCellValue(rowArr[idx], def.type);
-      if(value === undefined) return;
-      if(def.options && typeof value === "string"){
-        // e.g. Stability's dropdown options — accept any casing the user typed.
-        const matchOpt = def.options.find(o => o.toLowerCase() === value.toLowerCase());
-        if(matchOpt) value = matchOpt;
-      }
-      setGlobalOverride(ticker, def.id, value);
-      valuesApplied++;
-    });
-  });
-
-  return { tickersAdded, tickersUpdated, valuesApplied, unmatchedHeaders: [...new Set(unmatchedHeaders)] };
-}
-
-// Same idea for Past Purchases, applied into the currently open Past Purchases
-// list. Column 0 is always "Asset". An asset symbol already present as a row in
-// this list gets its FIRST matching row updated; one that isn't gets a brand new
-// row added (via addPastPurchaseRow, same as the "+/- Asset" panel — including
-// the same one-time pull of matching data from the Portfolio Lists table).
-function importExcelIntoActivePastPurchasesList(rowsAoA){
-  if(!rowsAoA || rowsAoA.length === 0) return { assetsAdded: 0, assetsUpdated: 0, valuesApplied: 0, unmatchedHeaders: [] };
-  const [headerRow, ...dataRows] = rowsAoA;
-  const editableParams = getEditablePastPurchasesParams();
-  const colMap = [];
-  const unmatchedHeaders = [];
-  headerRow.forEach((h, idx) => {
-    if(idx === 0){ colMap.push(null); return; } // "Asset" column
-    const norm = normalizeParamLabel(String(h));
-    const match = editableParams.find(p => normalizeParamLabel(p.label) === norm);
-    colMap.push(match || null);
-    if(!match && String(h).trim() !== "") unmatchedHeaders.push(String(h));
-  });
-
-  const knownAssetRowIds = {}; // asset -> rowId, seeded from the open list and grown as new rows are added below
-  getPastPurchasesRows().forEach(r => { if(r.asset && knownAssetRowIds[r.asset] === undefined) knownAssetRowIds[r.asset] = r.id; });
-  let assetsAdded = 0, assetsUpdated = 0, valuesApplied = 0;
-
-  dataRows.forEach(rowArr => {
-    const asset = String(rowArr[0] || "").trim().toUpperCase();
-    if(!asset) return;
-
-    let rowId = knownAssetRowIds[asset];
-    if(rowId !== undefined){
-      assetsUpdated++;
-    } else {
-      rowId = addPastPurchaseRow(asset);
-      pullMainTableDataIntoPastPurchases(rowId, asset);
-      knownAssetRowIds[asset] = rowId;
-      assetsAdded++;
-    }
-
-    colMap.forEach((param, idx) => {
-      if(!param) return;
-      const value = parseImportedCellValue(rowArr[idx], param.type);
-      if(value === undefined) return;
-      setPastPurchaseValue(rowId, param.id, value);
-      valuesApplied++;
-    });
-  });
-
-  return { assetsAdded, assetsUpdated, valuesApplied, unmatchedHeaders: [...new Set(unmatchedHeaders)] };
-}
-
-function wireUpSampleAndImportExcelButtons(){
-  // --- Portfolio Lists ---
-  const sampleBtn = document.getElementById("sampleExcelBtn");
-  const importBtn = document.getElementById("importExcelBtn");
-  const importInput = document.getElementById("importExcelFileInput");
-  const statusEl = document.getElementById("excelDataEntryStatus");
-
-  if(sampleBtn){
-    sampleBtn.addEventListener("click", () => {
-      const { headers, rows } = buildSampleExcelForDataEntry_Portfolio();
-      exportTableAsExcel("Sample_Data_Entry.xlsx", "Data Entry", headers, rows);
-      if(statusEl){
-        statusEl.textContent = rows.length === 0
-          ? "No tickers yet — add at least one asset to a Portfolio List first."
-          : `Downloaded a template covering ${rows.length} ticker(s) across every Portfolio List.`;
-        statusEl.style.color = rows.length === 0 ? "var(--amber)" : "var(--emerald)";
-      }
-    });
-  }
-
-  if(importBtn && importInput){
-    importBtn.addEventListener("click", () => importInput.click());
-    importInput.addEventListener("change", async () => {
-      const file = importInput.files && importInput.files[0];
-      importInput.value = ""; // allow re-selecting the exact same file later
-      if(!file) return;
-      if(statusEl){ statusEl.textContent = "Reading file…"; statusEl.style.color = "var(--text-secondary)"; }
-      try{
-        const rowsAoA = await readWorkbookFirstSheetRows(file);
-        const result = importExcelIntoActivePortfolioList(rowsAoA);
-        runMatrixOptimization();
-        renderRemoveList();
-        renderListSelector();
-        if(statusEl){
-          if(result.tickersAdded + result.tickersUpdated === 0){
-            statusEl.textContent = "No rows with a Ticker were found in that file.";
-            statusEl.style.color = "var(--amber)";
-          } else {
-            const unmatchedNote = result.unmatchedHeaders.length
-              ? ` ${result.unmatchedHeaders.length} column(s) weren't recognized and were skipped: ${result.unmatchedHeaders.join(", ")}.`
-              : "";
-            statusEl.textContent = `Imported into "${getActiveList().name}": ${result.tickersAdded} new ticker(s), ${result.tickersUpdated} existing ticker(s) touched, ${result.valuesApplied} value(s) applied.${unmatchedNote}`;
-            statusEl.style.color = "var(--emerald)";
-          }
-        }
-      }catch(err){
-        console.error("Portfolio Excel import failed:", err);
-        if(statusEl){
-          statusEl.textContent = err.message || "Could not read that file — make sure it's a .xlsx/.xls file exported from this tool (or matching its column headers).";
-          statusEl.style.color = "#ef4444";
-        }
-      }
-    });
-  }
-
-  // --- Past Purchases ---
-  const ppSampleBtn = document.getElementById("ppSampleExcelBtn");
-  const ppImportBtn = document.getElementById("ppImportExcelBtn");
-  const ppImportInput = document.getElementById("ppImportExcelFileInput");
-  const ppStatusEl = document.getElementById("ppExcelDataEntryStatus");
-
-  if(ppSampleBtn){
-    ppSampleBtn.addEventListener("click", () => {
-      const { headers, rows } = buildSampleExcelForDataEntry_PastPurchases();
-      exportTableAsExcel("Past_Purchases_Sample_Data_Entry.xlsx", "Data Entry", headers, rows);
-      if(ppStatusEl){
-        ppStatusEl.textContent = rows.length === 0
-          ? "No assets yet — add at least one asset to a Past Purchases list first."
-          : `Downloaded a template covering ${rows.length} asset(s) across every Past Purchases list.`;
-        ppStatusEl.style.color = rows.length === 0 ? "var(--amber)" : "var(--emerald)";
-      }
-    });
-  }
-
-  if(ppImportBtn && ppImportInput){
-    ppImportBtn.addEventListener("click", () => ppImportInput.click());
-    ppImportInput.addEventListener("change", async () => {
-      const file = ppImportInput.files && ppImportInput.files[0];
-      ppImportInput.value = "";
-      if(!file) return;
-      if(ppStatusEl){ ppStatusEl.textContent = "Reading file…"; ppStatusEl.style.color = "var(--text-secondary)"; }
-      try{
-        const rowsAoA = await readWorkbookFirstSheetRows(file);
-        const result = importExcelIntoActivePastPurchasesList(rowsAoA);
-        renderPastPurchasesTickerList();
-        renderPastPurchasesParamList();
-        renderPastPurchasesTable();
-        renderPastPurchasesColumnOrderList();
-        renderPastPurchasesRowOrderList();
-        renderPPListSelector();
-        if(ppStatusEl){
-          if(result.assetsAdded + result.assetsUpdated === 0){
-            ppStatusEl.textContent = "No rows with an Asset were found in that file.";
-            ppStatusEl.style.color = "var(--amber)";
-          } else {
-            const unmatchedNote = result.unmatchedHeaders.length
-              ? ` ${result.unmatchedHeaders.length} column(s) weren't recognized and were skipped: ${result.unmatchedHeaders.join(", ")}.`
-              : "";
-            ppStatusEl.textContent = `Imported into "${getActivePastPurchasesList().name}": ${result.assetsAdded} new asset(s), ${result.assetsUpdated} existing asset(s) touched, ${result.valuesApplied} value(s) applied.${unmatchedNote}`;
-            ppStatusEl.style.color = "var(--emerald)";
-          }
-        }
-      }catch(err){
-        console.error("Past Purchases Excel import failed:", err);
-        if(ppStatusEl){
-          ppStatusEl.textContent = err.message || "Could not read that file — make sure it's a .xlsx/.xls file exported from this tool (or matching its column headers).";
-          ppStatusEl.style.color = "#ef4444";
-        }
-      }
-    });
-  }
 }
 
 function renderListSelector(){
@@ -3576,17 +3025,7 @@ function renderCellHTML(colDef, item, badge){
     }
     return `<td><input class="cell-input cell-input-num${defaultClass}" data-ticker="${item.ticker}" data-field="${colDef.id}" data-resolved-value="${val}" type="number" step="0.01" value="${val}"></td>`;
   }
-  if(colDef.id === 'currentPrice'){
-    // Emerald font when Current Price has fallen to or below a user-added "To
-    // Buy Price" custom column's target for this ticker — a "hit your buy
-    // target" signal. Styled on the input itself (not just the <td>) so the
-    // number actually reads emerald.
-    const val = item.currentPrice;
-    const isAtTarget = isAtOrBelowBuyPriceTarget(val, getCustomParams(), item.customValues);
-    const styleAttr = isAtTarget ? ' style="color:var(--emerald);"' : '';
-    return `<td><input class="cell-input cell-input-num" data-ticker="${item.ticker}" data-field="currentPrice" data-resolved-value="${val}" type="number" step="0.01" value="${val}"${styleAttr}></td>`;
-  }
-  // Default: built-in numeric field (roa, pe, targetPrice, revenueGrowth, etc.)
+  // Default: built-in numeric field (roa, pe, currentPrice, targetPrice, revenueGrowth, etc.)
   const val = item[colDef.id];
   return `<td><input class="cell-input cell-input-num" data-ticker="${item.ticker}" data-field="${colDef.id}" data-resolved-value="${val}" type="number" step="0.01" value="${val}"></td>`;
 }
@@ -4419,14 +3858,6 @@ try{
     });
   }
 
-  const ppCurrentHoldingsToggle = document.getElementById("ppCurrentHoldingsToggle");
-  if(ppCurrentHoldingsToggle){
-    ppCurrentHoldingsToggle.addEventListener("click", () => {
-      setPpShowCurrentHoldingsOnly(!getPpShowCurrentHoldingsOnly());
-      renderPastPurchasesTable();
-    });
-  }
-
   const ppImportListBtn = document.getElementById("ppImportListBtn");
   if(ppImportListBtn){
     ppImportListBtn.addEventListener("click", () => {
@@ -4579,12 +4010,6 @@ try{
   wireUpExportButtons();
 }catch(err){
   console.error("Failed to wire up export buttons:", err);
-}
-
-try{
-  wireUpSampleAndImportExcelButtons();
-}catch(err){
-  console.error("Failed to wire up Sample Excel / Import Excel buttons:", err);
 }
 
 try{
