@@ -68,47 +68,8 @@ tr:hover { background: rgba(255, 255, 255, 0.02); }
 .ticker-txt { font-weight: 700; color: #fff; background: #1e293b; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
 .cell-input-ticker { font-weight: 700; color: #fff; background: #1e293b; border-radius: 4px; font-size: 0.85rem; width: 90px; text-transform: uppercase; }
 .cell-input-ticker:hover, .cell-input-ticker:focus { border-color: var(--accent-blue); }
-.section-toggle-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 6px; font-size: 0.9rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
-.section-toggle-btn:hover { border-color: var(--accent-blue); color: #fff; }
 .tab-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 0.6rem 1.25rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
 .tab-btn.active-tab { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
-.tab-btn-export-excel { color: #22c55e; }
-.tab-btn-export-text { color: var(--text-secondary); }
-.tab-btn-export-word { color: #1e3a8a; }
-.tab-btn-export-pdf { color: #991b1b; }
-
-/* --- Desktop/Mobile interface toggle ---
-   A manual override (not a @media query), so a user can force the mobile-optimized
-   layout even on a wide desktop browser (or vice versa) and have it stick, via the
-   two tabs under the top disclaimer. Selectors below use !important where the same
-   element also carries an inline style (very common in this page), since inline
-   styles otherwise beat any class rule regardless of specificity. */
-body.view-mobile { padding: 0.75rem !important; }
-body.view-mobile .container { max-width: 100% !important; }
-body.view-mobile h1 { font-size: 1.5rem !important; }
-body.view-mobile p.subtitle { font-size: 0.9rem !important; }
-body.view-mobile header { margin-bottom: 1.5rem !important; padding-bottom: 1rem !important; }
-body.view-mobile .disclaimer { font-size: 0.8rem !important; padding: 0.85rem 1rem !important; }
-body.view-mobile .control-panel { flex-direction: column !important; align-items: stretch !important; gap: 0.6rem !important; padding: 1rem !important; }
-body.view-mobile .control-panel label { font-size: 0.85rem !important; }
-body.view-mobile .control-panel > select,
-body.view-mobile .control-panel > input,
-body.view-mobile .control-panel > button,
-body.view-mobile .control-panel > .form-input { width: 100% !important; }
-body.view-mobile [style*="display:flex"] { flex-wrap: wrap !important; }
-body.view-mobile h2 { font-size: 1.05rem !important; }
-body.view-mobile .tab-btn { flex: 1 1 auto !important; font-size: 0.8rem !important; padding: 0.55rem 0.75rem !important; }
-body.view-mobile table { font-size: 0.78rem !important; }
-body.view-mobile th, body.view-mobile td { padding: 0.7rem 0.55rem !important; }
-body.view-mobile .table-container { max-height: 62vh !important; }
-body.view-mobile button { min-height: 42px; }
-body.view-mobile .row-ctrl-btn, body.view-mobile .col-ctrl-btn { width: 30px !important; height: 30px !important; font-size: 1rem !important; }
-body.view-mobile .cell-input-ticker { width: 78px !important; }
-body.view-mobile .allocation-badge { font-size: 0.8rem; }
-.view-toggle-panel { justify-content: center !important; }
-.view-toggle-panel .tab-btn { min-width: 170px; }
-body.view-mobile .view-toggle-panel { flex-direction: row !important; }
-body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-width: 0; }
 .form-input { background: var(--bg-main); color: #fff; border: 1px solid var(--border-color); padding: 0.65rem 0.9rem; border-radius: 8px; font-size: 0.9rem; font-family: inherit; }
 .form-input:focus { outline: none; border-color: var(--accent-blue); }
 .remove-chip { display: flex; align-items: center; gap: 0.5rem; background: var(--bg-main); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.85rem; }
@@ -154,11 +115,6 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
 #appShell{ display:none; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
-<!-- Export helpers: SheetJS for Excel (retried across multiple CDN hosts at click time
-     if this initial load fails — see EXPORT_LIB_URLS in app.js). PDF export uses the
-     browser's own native print dialog instead of a library, so it needs no script tag
-     and can never fail on a blocked CDN. Text/Word export need no library either. -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -214,16 +170,9 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
 
 <div id="appShell">
 <div class="container">
-  <div class="disclaimer" style="background: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.3); color: #cbd5e1;">
+  <div class="disclaimer">
     <strong>⚠ Not financial advice / not live data.</strong> Prices, P/E, ROA, target prices, and "stability" ratings below are manually entered placeholder figures used to demonstrate a weighting formula — they are not sourced from a real-time market feed or professional research, and may be outdated or inaccurate. Do not use this tool to make actual investment decisions. Verify all figures independently before relying on them.
   </div>
-
-  <div class="control-panel view-toggle-panel" style="flex-wrap: wrap;">
-    <span style="color:var(--text-secondary); font-size:0.85rem;">View as:</span>
-    <button id="viewDesktopBtn" class="tab-btn active-tab" title="Optimized for a wide screen — full control rows, denser table">🖥 Desktop interface</button>
-    <button id="viewMobileBtn" class="tab-btn" title="Optimized for a phone screen — stacked controls, larger touch targets">📱 Mobile interface</button>
-  </div>
-
   <header>
     <h1>Institutional Equity Matrix Optimizer</h1>
     <p class="subtitle">Multi-Factor Portfolio Cash Weight Optimization Dashboard</p>
@@ -239,38 +188,12 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
     <span id="fetchStatus" style="color:var(--text-secondary); font-size:0.9rem;"></span>
   </div>
 
-  <div class="table-container" style="margin-top:1rem; padding:1.25rem;">
-    <h2 style="font-size:1.1rem; color:var(--accent-blue); font-weight:600; margin-bottom:0.75rem;">⚡ Quick Paste Update — copy and paste this to your AI</h2>
-    <div class="disclaimer" style="background: rgba(37, 99, 235, 0.08); border-color: rgba(37, 99, 235, 0.3); color: #93c5fd; margin-bottom:1rem;">
-      No Finnhub key, or want a second source? The box below lists every ticker across <strong>all</strong> your Portfolio Lists together with the fields to update (Current Price, P/E, ROA), in a fixed order. Copy it and paste it to an AI assistant (Claude, ChatGPT, Gemini, etc.) — it can research current values and reply with just the numbers, comma-separated, in that same order. Paste that reply into the second box and click "Parse & Update" — each ticker's values update everywhere it appears, across every Portfolio List, the same way "Fetch live data" does.
-    </div>
-    <label for="qpuPromptBox" style="display:block; color:var(--text-secondary); font-size:0.85rem; margin-bottom:0.4rem;">Step 1 — copy this prompt to your AI:</label>
-    <textarea id="qpuPromptBox" readonly rows="6" style="width:100%; background: var(--bg-main); color:#fff; border:1px solid var(--border-color); padding:0.75rem 1rem; border-radius:8px; font-family:monospace; font-size:0.85rem; resize:vertical;"></textarea>
-    <div style="margin-top:0.5rem; margin-bottom:1.25rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-      <button id="qpuCopyBtn" type="button" style="background:transparent; border:1px solid var(--border-color); color:var(--text-secondary);">📋 Copy prompt</button>
-      <button id="qpuRefreshBtn" type="button" style="background:transparent; border:1px solid var(--border-color); color:var(--text-secondary);">↻ Refresh ticker list</button>
-      <span id="qpuPromptStatus" style="color:var(--text-secondary); font-size:0.85rem;"></span>
-    </div>
-    <label for="qpuPasteInput" style="display:block; color:var(--text-secondary); font-size:0.85rem; margin-bottom:0.4rem;">Step 2 — paste your AI's reply (numbers only, comma-separated) here:</label>
-    <textarea id="qpuPasteInput" rows="4" placeholder="e.g. 227.50, 32.10, 24.30, 410.20, 35.00, 27.80, ..." style="width:100%; background: var(--bg-main); color:#fff; border:1px solid var(--border-color); padding:0.75rem 1rem; border-radius:8px; font-family:monospace; font-size:0.85rem; resize:vertical;"></textarea>
-    <div style="margin-top:0.75rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-      <button id="qpuParseBtn" type="button">Parse & Update</button>
-      <span id="qpuParseStatus" style="color:var(--text-secondary); font-size:0.9rem;"></span>
-    </div>
-  </div>
-
   <div class="control-panel" style="flex-wrap: wrap; align-items: center;">
     <span style="color:var(--emerald);">Logged in as <strong id="loggedInEmailInline"></strong></span>
     <button id="syncNowBtn" style="background:transparent; border:1px solid var(--border-color); color:var(--text-secondary);">Sync now</button>
     <button id="logOutBtnInline" style="background:transparent; border:1px solid #ef4444; color:#ef4444;">Log Out</button>
     <span id="syncStatus" style="color:var(--text-secondary); font-size:0.9rem;"></span>
   </div>
-
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-top:1.5rem; margin-bottom:0.75rem;">
-    <h2 style="font-size:1.3rem; color:var(--emerald); font-weight:600;">Portfolio</h2>
-    <button id="portfolioToggleBtn" class="section-toggle-btn" title="Collapse or expand the Portfolio section" onclick="toggleCollapsibleSection('portfolioSectionBody','portfolioToggleBtn')">▼</button>
-  </div>
-  <div id="portfolioSectionBody">
 
   <div class="control-panel" style="flex-wrap: wrap;">
     <label for="listSelector" style="color:#facc15; font-size:1.3rem;">Portfolio List:</label>
@@ -299,7 +222,7 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
       <div style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end;">
         <input id="newTicker" placeholder="Ticker (e.g. RGTI)" class="form-input" style="width:140px;">
         <input id="newName" placeholder="Company Name" class="form-input" style="flex:1; min-width:180px;">
-        <input id="newTarget" type="number" step="0.01" placeholder="Consensus Target Price" class="form-input" style="width:140px;">
+        <input id="newTarget" type="number" step="0.01" placeholder="Target Price" class="form-input" style="width:140px;">
         <label style="display:flex; flex-direction:column; font-size:0.85rem; color:var(--text-secondary); gap:4px;">Stability
           <select id="newStability" class="form-input" style="width:140px;">
             <option value="Ultra-high">Ultra-high</option>
@@ -322,8 +245,8 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
     </div>
 
     <div id="addParamPanel" style="display:none;">
-      <div class="chart-note" style="margin-bottom:0.5rem;">Adds a new column to the table for every ticker in every list. Note: custom parameters are display/editable only — they don't automatically factor into the mandate scoring formulas (except the computed presets below, which are).</div>
-      <label style="display:flex; flex-direction:column; font-size:0.85rem; color:var(--text-secondary); gap:4px; margin-bottom:0.75rem; max-width:400px;">Choose from common parameters (A–Z, includes the Past Purchases-only ones too), or pick Custom to type your own
+      <div class="chart-note" style="margin-bottom:0.5rem;">Adds a new column to the table for every ticker in every list. Note: custom parameters are display/editable only — they don't automatically factor into the mandate scoring formulas.</div>
+      <label style="display:flex; flex-direction:column; font-size:0.85rem; color:var(--text-secondary); gap:4px; margin-bottom:0.75rem; max-width:400px;">Choose from 40 common parameters, or pick Custom to type your own
         <select id="newParamPreset" class="form-input"></select>
       </label>
       <div style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end;">
@@ -345,14 +268,6 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
       <div id="addParamStatus" style="color:var(--text-secondary); font-size:0.9rem; margin-top:0.5rem;"></div>
       <div class="chart-note" style="margin-top:0.75rem;">Existing custom parameters (click × to remove):</div>
       <div id="customParamList" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.5rem;"></div>
-
-      <div class="chart-note" style="margin-top:1.25rem;">Fixed columns from the Sample List (click × to hide — this keeps the underlying data and any scoring use, and can be undone below):</div>
-      <div id="builtinColumnList" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.5rem;"></div>
-
-      <div id="hiddenBuiltinColumnSection" style="display:none;">
-        <div class="chart-note" style="margin-top:1.25rem;">Hidden Sample List columns (click + to restore):</div>
-        <div id="hiddenBuiltinColumnList" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.5rem;"></div>
-      </div>
     </div>
 
     <div id="columnsPanel" style="display:none;">
@@ -385,14 +300,8 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
     <button id="optimizeBtn">Execute Allocation Logic</button>
   </div>
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
-    <h2 id="activeListHeading" style="font-size:1.3rem; color:#facc15; font-weight:600;">Portfolio viewing: —</h2>
+    <h2 id="activeListHeading" style="font-size:1.3rem; color:#facc15; font-weight:600;">Now viewing: —</h2>
     <span id="listActionStatus" style="color:var(--emerald); font-size:0.9rem;"></span>
-  </div>
-  <div style="display:flex; gap: 0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">
-    <button id="exportExcelBtn" class="tab-btn tab-btn-export-excel" title="Download this table as an Excel file (.xlsx)">⬇ Export to Excel</button>
-    <button id="exportTextBtn" class="tab-btn tab-btn-export-text" title="Download this table as a text file (.txt)">⬇ Export to Text</button>
-    <button id="exportWordBtn" class="tab-btn tab-btn-export-word" title="Download this table as a Word document (.doc)">⬇ Export to Word</button>
-    <button id="exportPdfBtn" class="tab-btn tab-btn-export-pdf" title="Opens your browser's print dialog — choose &quot;Save as PDF&quot; as the destination. Needs no internet connection.">🖨 Export to PDF</button>
   </div>
   <div class="table-container">
     <table id="resultsTable">
@@ -401,36 +310,21 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
     </table>
   </div>
   <div style="text-align:center; color:var(--text-secondary); font-size:0.75rem; margin-top:1rem;">
-    HTML build: v5.32 (PP-to-PP list import, collapsible Portfolio/Past Purchases sections, "Portfolio/Past Purchases viewing:" labels, colored Word/PDF exports, Quick Paste Update, Consensus Target Price rename)
+    HTML build: v5.22 (Past Purchases: repeat assets, monthly sale subtotals)
   </div>
 
-  </div>
   <div style="display:flex; align-items:center; justify-content:space-between; margin-top:2.5rem; margin-bottom:0.75rem;">
     <h2 style="font-size:1.3rem; color:#facc15; font-weight:600;">Past Purchases</h2>
-    <button id="pastPurchasesToggleBtn" class="section-toggle-btn" title="Collapse or expand the Past Purchases section" onclick="toggleCollapsibleSection('pastPurchasesSectionBody','pastPurchasesToggleBtn')">▼</button>
   </div>
-  <div id="pastPurchasesSectionBody">
-
-  <div class="control-panel" style="flex-wrap: wrap;">
-    <label for="ppListSelector" style="color:#facc15; font-size:1.3rem;">Past Purchases List:</label>
-    <select id="ppListSelector" class="form-input" style="min-width:180px;"></select>
-    <button id="ppNewListBtn" style="background:transparent; border:1px solid var(--border-color); color:var(--text-secondary);">+ New List</button>
-    <button id="ppRenameListBtn" style="background:transparent; border:1px solid var(--border-color); color:var(--text-secondary);">Rename</button>
-    <button id="ppDeleteListBtn" style="background:transparent; border:1px solid #ef4444; color:#ef4444;">Delete List</button>
-  </div>
-
-  <div class="disclaimer" style="background: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.3); color: #cbd5e1;">
-    <strong>Freeform tracking table — no built-in columns.</strong> This table starts completely empty of parameters. Add whichever assets you want, and add whichever parameters you want to track for them (e.g. Units Purchased, Average Purchase Price, Date Purchased, or anything else) — nothing here is pre-set. You can also import the full asset list from any Portfolio List, or copy every row from another Past Purchases list, using "Import list" below. Data only ever flows <strong>one way</strong>, from Portfolio Lists into Past Purchases (never the reverse): adding/importing an asset here automatically carries over Units Purchased, Average Purchase Price, and Date Purchased, plus fills in any OTHER column here that matches a Portfolio Lists column by name (e.g. add a "Current Price" column here yourself, and it'll be filled from Portfolio Lists) — but it won't invent new columns for unrelated Portfolio Lists fields you never added here. Since that pull only happens once, when a row is added, use "↻ Refresh from Portfolio Lists" below any time — including after using "Fetch live data" up on the Portfolio Lists table — to re-pull the latest values into rows already here.
+  <div class="disclaimer" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;">
+    <strong>Freeform tracking table — no built-in columns.</strong> This table starts completely empty of parameters. Add whichever assets you want, and add whichever parameters you want to track for them (e.g. Units Purchased, Average Purchase Price, Date Purchased, or anything else) — nothing here is pre-set. You can also import the full asset list from any Portfolio List above with one click.
   </div>
 
   <div class="control-panel" style="flex-wrap: wrap;">
-    <label for="ppImportListSelect" title="Import a Portfolio List's assets, or copy another Past Purchases list's rows, into the list you're currently viewing.">Import list:</label>
-    <select id="ppImportListSelect" class="form-input" style="min-width:220px;"></select>
-    <button id="ppImportListBtn">Import into Past Purchases</button>
+    <label for="ppImportListSelect">Import list:</label>
+    <select id="ppImportListSelect" class="form-input" style="min-width:180px;"></select>
+    <button id="ppImportListBtn">Import list into Past Purchases</button>
     <span id="ppImportStatus" style="color:var(--text-secondary); font-size:0.9rem;"></span>
-    <span style="width:1px; align-self:stretch; background:var(--border-color); margin:0 0.5rem;"></span>
-    <button id="ppRefreshFromPortfolioBtn" title="Re-pulls Units Purchased/Average Purchase Price/Date Purchased plus any matching column you've already added here (e.g. Current Price) from the Portfolio Lists table, using its latest values — including after a live data fetch.">↻ Refresh from Portfolio Lists</button>
-    <span id="ppRefreshStatus" style="color:var(--text-secondary); font-size:0.9rem;"></span>
   </div>
 
   <div class="control-panel" style="flex-direction: column; align-items: stretch; gap: 1rem;">
@@ -453,8 +347,8 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
     </div>
 
     <div id="ppParamPanel" style="display:none;">
-      <div class="chart-note" style="margin-bottom:0.5rem;">Adds a new column to the Past Purchases table only. Type any name, pick a type, and (optionally) a default value — or choose from the exact same dropdown as the Portfolio table above (A–Z), including sale-tracking fields like "Date Sale", "Selling Price", and the computed "Sale Profit", and fields that mirror the Portfolio table's fixed Sample List columns (e.g. "Current Price"), which are useful here since this table has no fixed columns of its own.</div>
-      <label style="display:flex; flex-direction:column; font-size:0.85rem; color:var(--text-secondary); gap:4px; margin-bottom:0.75rem; max-width:400px;">Choose from common parameters (A–Z), or pick Custom to type your own
+      <div class="chart-note" style="margin-bottom:0.5rem;">Adds a new column to the Past Purchases table only. Type any name, pick a type, and (optionally) a default value — or choose from the same common parameters available above, plus a few sale-tracking ones ("Date Sale", "Selling Price", and the computed "Sale Profit").</div>
+      <label style="display:flex; flex-direction:column; font-size:0.85rem; color:var(--text-secondary); gap:4px; margin-bottom:0.75rem; max-width:400px;">Choose from common parameters, or pick Custom to type your own
         <select id="ppNewParamPreset" class="form-input"></select>
       </label>
       <div style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end;">
@@ -495,32 +389,16 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
       <option value="date-new">Date Added (newest first)</option>
       <option value="date-old">Date Added (oldest first)</option>
       <option value="alpha">Alphabetical (Asset)</option>
-      <option value="param-date-purchased">Date Purchased (most recent first)</option>
-      <option value="param-date-sale">Date Sale (most recent first)</option>
-      <option value="param-sale-profit">Sale Profit (highest first)</option>
-      <option value="param-missed-gain">Missed Gain % (highest first)</option>
       <option value="custom" selected>Custom order (reorder with ↑ ↓)</option>
     </select>
   </div>
 
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
-    <h2 id="ppActiveListHeading" style="font-size:1.3rem; color:#facc15; font-weight:600;">Past Purchases viewing: —</h2>
-    <span id="ppListActionStatus" style="color:var(--emerald); font-size:0.9rem;"></span>
-  </div>
-  <div style="display:flex; gap: 0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">
-    <button id="ppExportExcelBtn" class="tab-btn tab-btn-export-excel" title="Download this table as an Excel file (.xlsx)">⬇ Export to Excel</button>
-    <button id="ppExportTextBtn" class="tab-btn tab-btn-export-text" title="Download this table as a text file (.txt)">⬇ Export to Text</button>
-    <button id="ppExportWordBtn" class="tab-btn tab-btn-export-word" title="Download this table as a Word document (.doc)">⬇ Export to Word</button>
-    <button id="ppExportPdfBtn" class="tab-btn tab-btn-export-pdf" title="Opens your browser's print dialog — choose &quot;Save as PDF&quot; as the destination. Needs no internet connection.">🖨 Export to PDF</button>
-  </div>
   <div class="table-container" style="margin-bottom:2rem;">
     <table id="ppTable">
       <thead id="ppTableHead"></thead>
       <tbody id="ppTableBody"></tbody>
       <tfoot id="ppTableFoot"></tfoot>
     </table>
-  </div>
-
   </div>
 
   <div class="table-container" style="margin-top:2rem; padding:1.5rem;">
@@ -557,7 +435,7 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
 
   <div class="table-container" style="margin-top:1.5rem; padding:1.5rem; margin-bottom:2rem;">
     <h2 style="color:#facc15; font-size:1.2rem; margin-bottom:1rem;">Parameter glossary (A–Z)</h2>
-    <p class="chart-note" style="margin-bottom:1rem;">Definitions for every option in the "+/- Parameter" dropdown &mdash; the same A&ndash;Z list on both the Portfolio Lists table and the Past Purchases table &mdash; plus the fixed Portfolio Lists columns (like Current Price, ROA, Beta, Stability) that come from the Sample List. Those fixed columns also appear as dropdown options (so they're documented and, on Past Purchases, addable as manual-entry fields), but adding one on the Portfolio table itself is blocked since the fixed column already exists there; entries below say when that applies.</p>
+    <p class="chart-note" style="margin-bottom:1rem;">Definitions for every option in the "+/- Parameter" dropdown, in alphabetical order.</p>
     <table style="width:100%; border-collapse:separate; border-spacing:0;">
       <thead>
         <tr>
@@ -574,18 +452,10 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Asset Turnover</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Total revenue divided by total assets; measures how efficiently a company uses its assets to generate sales.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Average Purchase Price ($)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Manual entry: the average price per share you actually paid, for your own cost-basis tracking. Not fetched from any source.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Average Volume (M)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The average number of shares (in millions) traded per day over a recent period.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Beta</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. A measure of the stock’s price volatility relative to the overall market — 1.0 moves with the market, above 1.0 is more volatile, below 1.0 is less.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Book Value</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Computed automatically (read-only): Units Purchased × Average Purchase Price — what the position cost, regardless of whether it's been sold yet. Requires "Units Purchased" and "Average Purchase Price ($)" columns both present and non-zero; shows $0.00 until then. Feeds the "Total Current Book Value" footer row, which sums this across all rows with no Selling Price entered (i.e. not yet sold).</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Cash Runway (yr)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. The number of years a company could keep operating at its current cash-burn rate before running out of cash.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Company Name</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table (always present, not added via the dropdown). Not offered as a Past Purchases preset since the Asset column there already serves as the row’s identity.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Consensus Target Price</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. The analyst or your own price target for the asset, used to compute Current/Consensus Target Price (%) and Implied Upside.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Country / Region</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The primary country or geographic region where the company is headquartered or listed.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Current Price</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. The asset’s most recent trading price. On the main table this is live-fetchable via Finnhub; in Past Purchases it’s a manual entry, useful for recording the price at the time you’re logging the row.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Current Ratio</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Current assets divided by current liabilities; measures ability to cover short-term obligations.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Current/Consensus Target Price (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Computed automatically (read-only): Current Price ÷ Consensus Target Price × 100. Below 100% implies upside remaining; above 100% means the stock has passed its target.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">D/E Ratio</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Debt-to-equity: total debt divided by shareholder equity; higher values indicate more leverage.</td></tr>
+        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Current/Target Price (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Computed automatically (read-only): Current Price ÷ Target Price × 100. Below 100% implies upside remaining; above 100% means the stock has passed its target.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Date Purchased</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Manual entry: the date you bought the position, via a calendar picker (defaults to today). Not fetched from any source.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Date Sale</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The date you sold the position, via a calendar picker. On Past Purchases, it also groups rows into the "Sales Profit for month of X of Y" subtotals in that table’s footer, sorted most-recent month first; on Portfolio Lists it is a plain manual field (no monthly grouping there).</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Days Sales Outstanding</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The average number of days a company takes to collect payment after a sale; lower is generally better.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Dividend Payout Ratio (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The percentage of net income paid out to shareholders as dividends.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Dividend Yield (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Annual dividend per share divided by current share price. Live-fetchable via Finnhub where available.</td></tr>
@@ -595,11 +465,9 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">EPS Growth (YoY%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Year-over-year percentage change in diluted earnings per share.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">EV/EBITDA</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Enterprise Value ÷ EBITDA; a valuation multiple that adjusts for capital structure and non-cash expenses.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">EV/Revenue</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Enterprise Value ÷ annual revenue; useful for comparing companies with different profitability levels.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">FCF ($M)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Free cash flow in millions of dollars — operating cash flow minus capital expenditures.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Float (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The percentage of total shares outstanding that are freely tradable by the public.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Forward P/E</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Price ÷ projected (estimated) earnings per share for the next fiscal year, rather than trailing actual earnings.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Gross Margin (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Gross profit (revenue minus cost of goods sold) divided by revenue.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Implied Upside</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table (always present, not added via the dropdown). Computed automatically on the main table from Current Price vs. Consensus Target Price; feeds the Balanced and Aggressive scoring formulas above. Not offered in Past Purchases — it depends on the optimizer’s scoring engine rather than standing alone per row.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Industry</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The specific industry classification within the company's broader sector.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Insider Ownership (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The percentage of shares held by company executives, directors, and other insiders.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Institutional Ownership (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The percentage of shares held by mutual funds, pension funds, and other institutional investors.</td></tr>
@@ -608,28 +476,18 @@ body.view-mobile .view-toggle-panel .tab-btn { flex: 1 1 45% !important; min-wid
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">IPO Date</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The date the company's shares first began trading on a public exchange.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">MACD Signal</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">A qualitative read (e.g. Bullish, Bearish, Neutral) from the Moving Average Convergence Divergence technical indicator.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Market Cap ($B)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Current share price × total shares outstanding, in billions of dollars. Live-fetchable via Finnhub.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Missed Gain %</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Computed automatically (read-only): (Current Price − Selling Price) ÷ Selling Price × 100. Requires a "Selling Price" column with a non-zero value, and the asset must have Current Price data available (from the Sample List, live fetch, or a manual override); shows 0% until then. Recalculates every time you fetch/update live data, since it always reads the latest Current Price rather than a frozen snapshot — a positive value means the price kept rising after you sold (upside you missed), a negative value means it fell below your selling price.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Net Margin (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Net income divided by revenue.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Number of Analysts Covering</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The count of equity research analysts who publish estimates or ratings on the stock.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Operating Margin (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Operating income divided by revenue.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Optimized Weight Allocation</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table (always present, not added via the dropdown). Computed automatically for the active Portfolio List as a whole (not per-row), based on the selected scoring strategy. Not applicable to Past Purchases.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">P/E Multiple</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Share price divided by trailing earnings per share.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">PEG Ratio</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. P/E ratio divided by earnings growth rate; below 1 is often considered undervalued relative to growth.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Price to Book (P/B)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Share price divided by book value per share; compares market value to accounting net asset value.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Price to Sales (P/S)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Market cap divided by revenue; a valuation multiple often used for early-stage or low-margin companies.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Quick Ratio</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">(Current assets minus inventory) ÷ current liabilities; a stricter liquidity measure than the Current Ratio.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">R&D Spend (% of Revenue)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Research and development expenditure as a percentage of total revenue.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Return on Equity (ROE %)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Net income divided by shareholder equity; profitability relative to shareholders' investment.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Return on Invested Capital (ROIC %)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Net operating profit after tax divided by invested capital; efficiency of returns on deployed capital.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Rev Growth (YoY%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Year-over-year percentage change in revenue.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">ROA (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. Return on assets: net income divided by total assets.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">RSI (14-day)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Relative Strength Index over 14 days (0–100); above 70 suggests overbought, below 30 suggests oversold.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Sale Profit</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Computed automatically (read-only): Units Purchased × (Selling Price − Average Purchase Price). Requires “Units Purchased,” “Average Purchase Price ($),” and “Selling Price” columns all present and a non-zero Selling Price entered; shows 0 until then. Feeds the monthly “Sales Profit for month of X of Y” subtotals and the “Total Sale Profit to date” footer row.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Sector</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The broad economic sector the company operates in (e.g. Technology, Healthcare, Financials).</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Selling Price</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Manual entry: the price per share/unit you sold at. Not fetched from any source.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Shares Outstanding (M)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The total number of shares (in millions) currently issued and held by all shareholders.</td></tr>
         <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Short Interest (%)</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">The percentage of outstanding shares that have been sold short by investors betting on a price decline.</td></tr>
-        <tr><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color); color:#fff; font-weight:600;">Stability</td><td style="padding:0.6rem 1rem; border-bottom:1px solid var(--border-color);">Fixed column on the main Portfolio Lists table. Also listed in the “+/- Parameter” dropdown on both tables — selecting it on Portfolio Lists is blocked by the duplicate-column guard (the fixed column already exists), but on Past Purchases, which has no fixed columns of its own, it's addable as a manual-entry field. A qualitative rating of business durability (Ultra-high, High, Med, or Low) used in the scoring formulas above. On the main table it’s a dropdown; in Past Purchases it’s free text, since custom parameters there don’t support the dropdown-style rating.</td></tr>
         <tr><td style="padding:0.6rem 1rem; color:#fff; font-weight:600;">Units Purchased</td><td style="padding:0.6rem 1rem;">Manual entry: the number of shares/units you actually hold, for your own position tracking. Not fetched from any source.</td></tr>
       </tbody>
     </table>
