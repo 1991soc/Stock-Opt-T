@@ -7,8 +7,8 @@ console.log("app.js loaded — build v5.32 (PP-to-PP list import, collapsible Po
 // to a single Supabase row per user: pulling on login (overwrites local with
 // cloud), and pushing periodically + on demand while logged in. The whole app
 // is hidden behind #authOverlay until a session is confirmed.
-const SUPABASE_URL = "https://okbgjjnfxkbbryfgpyap.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_cfTIXfQwai1dHSRJmzoqJg_nLHE4UhR";
+const SUPABASE_URL = "https://rzvfeeatzksvgxucbzbo.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_qyTSD1QtcPLdF7UtQBtmNw_3Gw3P3nG";
 // The pastPurchasesTickers/Values/DateAdded keys are the OLD (pre-duplicates)
 // Past Purchases schema — no longer read or written directly, but kept in the
 // sync list as a safety net so a device pulling an older cloud snapshot can
